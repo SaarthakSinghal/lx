@@ -1,8 +1,8 @@
 <h1 align="center">lx</h1>
 
 <p align="center">
-  <img src="./screenshots/lx" alt="lx command" width="48%" />
-  <img src="./screenshots/lx-tree-ra" alt="lx recursive with inline tree" width="48%" />
+  <img src="./screenshots/lx.png" alt="lx command" width="48%" />
+  <img src="./screenshots/lx-tree-ra.png" alt="lx recursive with inline tree" width="48%" />
 </p>
 
 `lx` is a PowerShell directory listing command with a compact table layout, human-readable sizes, recursive directory-size support, Terminal-Icons integration, and inline tree previews for top-level directories.
