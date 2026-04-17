@@ -1,26 +1,32 @@
-<h1 align="center">lx</h1>
+<h1 align="center"><code>lx</code> - ls Upgraded</h1>
 
-<p align="center">
-  <img src="./screenshots/lx.png" alt="lx command" width="48%" />
-  <img src="./screenshots/lx-tree-ra.png" alt="lx recursive with inline tree" width="48%" />
-</p>
+<div align="center">
+  <p>
+    <img src="./screenshots/lx.png" alt="lx command" width="48%" />
+  </p>
+
+  <p>
+    <img src="./screenshots/lx-tree-ra.png" alt="lx recursive with inline tree" width="48%" />
+  </p>
+</div>
+
 
 `lx` is a PowerShell directory listing command with a compact table layout, human-readable sizes, recursive directory-size support, Terminal-Icons integration, and inline tree previews for top-level directories.
 
 ## Features
 
 - Table-style output with `Mode`, `LastWriteTime`, `Size`, and `Name`
-- Recursive directory-size calculation
-- Hidden files support
+- Human-readable sizes in `KB` / `MB` / `GB`
+- Directory-size calculation with `-r` flag
 - Size sorting with ascending and descending modes
 - Multiple target path support with separate `Directory: ...` sections
-- Terminal-Icons support for the main `Name` column
-- Inline tree previews with `--tree`
+- Colored file and folder icons in the main Name column using `Terminal-Icons`
+- Inline tree previews with `--tree` flag
 - Tree preview coloring:
   - folders are blue
   - normal files use the terminal default color
   - hidden files are dark gray
-- Tree-only long-name truncation with `...(+N more)` to keep the layout readable
+- Tree-only long-name truncation with `...(+N more)` to keep layout readable
 
 ## Requirements
 
@@ -233,3 +239,9 @@ lx C:\Projects C:\Downloads
 - Preview child sorting is intentionally separate from top-level sorting.
 - Main-row icon rendering depends on `Format-TerminalIcons`.
 - Tree continuation lines are aligned under the `Name` column.
+
+## References
+
+- [`Terminal-Icons`](https://github.com/devblackops/Terminal-Icons) for colored file and folder icons in the main `Name` column
+- [Nerd Fonts](https://www.nerdfonts.com/) for proper rendering of the icon glyphs used by `Terminal-Icons`
+- Unicode box-drawing characters for inline tree preview rendering
