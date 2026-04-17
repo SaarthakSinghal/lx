@@ -1,12 +1,12 @@
-<h1 align="center"><code>lx</code> - ls Upgraded</h1>
+<h1 align="center"><code>lx</code> - ls evolved</h1>
 
 <div align="center">
   <p>
-    <img src="./screenshots/lx.png" alt="lx command" width="48%" />
+    <img src="./screenshots/lx.png" alt="lx command" width="78%" />
   </p>
 
   <p>
-    <img src="./screenshots/lx-tree-ra.png" alt="lx recursive with inline tree" width="48%" />
+    <img src="./screenshots/lx-tree-ra.png" alt="lx recursive with inline tree" width="78%" />
   </p>
 </div>
 
@@ -31,6 +31,7 @@
 ## Requirements
 
 - PowerShell 7 recommended
+- Any one [Nerd Fonts](https://www.nerdfonts.com/) recommended
 - [`Terminal-Icons`](https://github.com/devblackops/Terminal-Icons) recommended
 
 If `Terminal-Icons` is not installed, `lx` still works and falls back to plain names.
