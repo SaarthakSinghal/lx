@@ -1,4 +1,4 @@
-<h1 align="center"><code>lx</code> - ls Upgraded</h1>
+<h1 align="center"><code>lx</code> - ls evolved</h1>
 
 <div align="center">
   <p>
