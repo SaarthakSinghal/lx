@@ -188,7 +188,7 @@ function Get-LxLastWriteTimeText {
     )
 
     process {
-        $Item.LastWriteTime.ToString('dd-MM-yyyy    HH:mm')
+        $Item.LastWriteTime.ToString('dd-MM-yyyy  HH:mm')
     }
 }
 
@@ -646,6 +646,7 @@ function Get-LxNativeLayout {
     $defaultHeaderPrefix = 'Mode                LastWriteTime         '
     $defaultUnderlinePrefix = '----                -------------         '
     $defaultPrefixWidth = $defaultHeaderPrefix.Length
+    $defaultLastWriteTimeStart = $defaultHeaderPrefix.IndexOf('LastWriteTime')
 
     if ($Items.Count -eq 0) {
         return [PSCustomObject]@{
@@ -683,28 +684,36 @@ function Get-LxNativeLayout {
         $defaultUnderlinePrefix
     }
 
+    $lastWriteTimeStart = $headerLine.IndexOf('LastWriteTime')
+    if ($lastWriteTimeStart -lt 0) {
+        $lastWriteTimeStart = $defaultLastWriteTimeStart
+    }
+
     $lengthStart = $headerLine.IndexOf('Length')
     if ($lengthStart -lt 0) {
         $lengthStart = $defaultPrefixWidth
     }
 
     $rowPrefixes = [System.Collections.Generic.List[string]]::new()
-    $rowStartIndex = $headerIndex + 2
 
-    for ($index = 0; $index -lt $Items.Count; $index++) {
-        $lineIndex = $rowStartIndex + $index
-        $prefix = ' ' * $lengthStart
+    foreach ($item in $Items) {
+        $modeText = Get-LxModeText -Item $item
+        $lastWriteTimeText = Get-LxLastWriteTimeText -Item $item
 
-        if ($lineIndex -lt $lines.Count) {
-            $line = $lines[$lineIndex]
-            if (-not [string]::IsNullOrWhiteSpace($line)) {
-                $prefix = if ($line.Length -ge $lengthStart) {
-                    $line.Substring(0, $lengthStart)
-                }
-                else {
-                    $line.PadRight($lengthStart)
-                }
-            }
+        # Match the native header spacing without reusing raw row text, so
+        # PowerShell's original Length digits cannot bleed into lx's Size column.
+        $rowLastWriteTimeStart = [Math]::Max($modeText.Length + 2, $lastWriteTimeStart - 4)
+
+        $prefix = (
+            $modeText.PadRight($rowLastWriteTimeStart) +
+            $lastWriteTimeText.PadRight([Math]::Max(0, $lengthStart - $lastWriteTimeStart))
+        )
+
+        if ($prefix.Length -gt $lengthStart) {
+            $prefix = $prefix.Substring(0, $lengthStart)
+        }
+        else {
+            $prefix = $prefix.PadRight($lengthStart)
         }
 
         $null = $rowPrefixes.Add($prefix)
@@ -1109,7 +1118,20 @@ function Write-LxRowBlock {
         [object]$ColumnWidths
     )
 
-    $gapAfterSize = ' ' * $ColumnWidths.GapAfterSize
+    $sizeShiftLeft = 2
+    $rowPrefix = $Row.NativePrefix
+    $actualSizeShift = 0
+
+    if ($rowPrefix) {
+        $trailingSpaces = $rowPrefix.Length - $rowPrefix.TrimEnd().Length
+        $actualSizeShift = [Math]::Min($sizeShiftLeft, $trailingSpaces)
+
+        if ($actualSizeShift -gt 0) {
+            $rowPrefix = $rowPrefix.Substring(0, $rowPrefix.Length - $actualSizeShift)
+        }
+    }
+
+    $gapAfterSize = ' ' * ($ColumnWidths.GapAfterSize + $actualSizeShift)
     $sizeSegment = if ([string]::IsNullOrEmpty($Row.SizeText)) {
         ' ' * $ColumnWidths.SizeWidth
     }
@@ -1117,8 +1139,8 @@ function Write-LxRowBlock {
         $Row.SizeText.PadLeft($ColumnWidths.SizeWidth)
     }
 
-    if ($Row.NativePrefix) {
-        Write-Host -NoNewline $Row.NativePrefix -ForegroundColor Gray
+    if ($rowPrefix) {
+        Write-Host -NoNewline $rowPrefix -ForegroundColor Gray
     }
     else {
         Write-Host -NoNewline ($Row.ModeText.PadRight($ColumnWidths.ModeWidth)) -ForegroundColor Gray
