@@ -31,6 +31,7 @@
 ## Requirements
 
 - PowerShell 7 recommended
+- Any one [Nerd Fonts](https://www.nerdfonts.com/) recommended
 - [`Terminal-Icons`](https://github.com/devblackops/Terminal-Icons) recommended
 
 If `Terminal-Icons` is not installed, `lx` still works and falls back to plain names.
