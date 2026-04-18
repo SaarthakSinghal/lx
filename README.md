@@ -251,5 +251,5 @@ lx C:\Projects C:\Downloads
 
 - [`Terminal-Icons`](https://github.com/devblackops/Terminal-Icons) for colored file and folder icons in the main `Name` column
 - [MartianMono Nerd Font](https://www.nerdfonts.com/) used for proper rendering of the icon glyphs
-- [Firewatch](https://windowsterminalthemes.dev/?theme=Firewatch) windows terminal theme used
+- [Firewatch](https://windowsterminalthemes.dev/?theme=Firewatch) windows terminal theme used to improve UI 
 - Unicode box-drawing characters for inline tree preview rendering
