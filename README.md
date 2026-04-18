@@ -1,7 +1,7 @@
 <h1 align="center"><code>lx</code></h1>
 
 <h3 align="center">
-  <p><code>ls</code><em>evolved</em></p>
+  <p><code>ls</code><em> evolved</em></p>
 </h3>
 
 #
