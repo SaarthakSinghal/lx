@@ -1,4 +1,10 @@
-<h1 align="center">lx</h1>
+<h1 align="center"><code>lx</code></h1>
+
+<h3 align="center">
+  <p><code>ls</code><em> evolved</em></p>
+</h3>
+
+#
 
 <div align="center">
   <p>
@@ -260,5 +266,6 @@ lx C:\Projects C:\Downloads
 ## References
 
 - [`Terminal-Icons`](https://github.com/devblackops/Terminal-Icons) for colored file and folder icons in the main `Name` column
-- [Nerd Fonts](https://www.nerdfonts.com/) for proper rendering of the icon glyphs used by `Terminal-Icons`
+- [MartianMono Nerd Font](https://www.nerdfonts.com/) used for proper rendering of the icon glyphs
+- [Firewatch](https://windowsterminalthemes.dev/?theme=Firewatch) windows terminal theme used to improve UI
 - Unicode box-drawing characters for inline tree preview rendering
