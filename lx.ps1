@@ -29,6 +29,8 @@ function Resolve-LxOptions {
     $sortMode = $null
     $treeEnabled = $false
     $treeMode = $null
+    $linksEnabled = $false
+    $linksMode = $null
     $clearCache = $false
     $showCacheInfo = $false
     $targetPaths = [System.Collections.Generic.List[object]]::new()
@@ -49,6 +51,9 @@ function Resolve-LxOptions {
         elseif ($arg -is [string] -and $arg -eq '--tree') {
             $treeMode = $true
         }
+        elseif ($arg -is [string] -and $arg -eq '--links') {
+            $linksMode = $true
+        }
         elseif ($arg -is [string] -and $arg -eq '--clear-cache') {
             $clearCache = $true
         }
@@ -63,6 +68,18 @@ function Resolve-LxOptions {
                 'false' { $treeMode = $false }
                 default {
                     Write-Error "Invalid value for --tree. Use --tree, --tree=true, or --tree=false."
+                    return $null
+                }
+            }
+        }
+        elseif ($arg -is [string] -and $arg -like '--links=*') {
+            $value = $arg.Substring(8).ToLowerInvariant()
+
+            switch ($value) {
+                'true'  { $linksMode = $true }
+                'false' { $linksMode = $false }
+                default {
+                    Write-Error "Invalid value for --links. Use --links, --links=true, or --links=false."
                     return $null
                 }
             }
@@ -89,12 +106,17 @@ function Resolve-LxOptions {
         $treeEnabled = $treeMode
     }
 
+    if ($null -ne $linksMode) {
+        $linksEnabled = $linksMode
+    }
+
     [PSCustomObject]@{
         ShowAll       = $showAll
         RecurseSize   = $recurseSize
         SortBySize    = $sortBySize
         SortAscending = $sortAscending
         TreeEnabled   = $treeEnabled
+        LinksEnabled  = $linksEnabled
         ClearCache    = $clearCache
         ShowCacheInfo = $showCacheInfo
         # Keep TreeDepth in the options shape so future --tree-depth work does not
@@ -636,6 +658,68 @@ function Get-LxRenderedName {
     "  $($Item.Name)"
 }
 
+function Test-LxHyperlinkSupport {
+    [CmdletBinding()]
+    param()
+
+    if (-not $Host.UI.SupportsVirtualTerminal) {
+        return $false
+    }
+
+    if (-not $PSStyle -or $PSStyle.PSObject.Methods.Name -notcontains 'FormatHyperlink') {
+        return $false
+    }
+
+    if ($PSStyle.OutputRendering -eq [System.Management.Automation.OutputRendering]::PlainText) {
+        return $false
+    }
+
+    $true
+}
+
+function Get-LxHyperlinkUri {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [System.IO.FileSystemInfo]$Item,
+
+        [Parameter(Mandatory)]
+        [object]$Options
+    )
+
+    if (-not $Options.LinksEnabled -or -not $Item.PSIsContainer -or -not (Test-LxHyperlinkSupport)) {
+        return $null
+    }
+
+    try {
+        return ([System.Uri]$Item.FullName).AbsoluteUri
+    }
+    catch {
+        return $null
+    }
+}
+
+function Format-LxHyperlinkText {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Text,
+
+        [string]$Uri
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Uri)) {
+        return $Text
+    }
+
+    try {
+        return $PSStyle.FormatHyperlink($Text, [System.Uri]$Uri)
+    }
+    catch {
+        return $Text
+    }
+}
+
 function Get-LxNativeLayout {
     [CmdletBinding()]
     param(
@@ -825,6 +909,7 @@ function Get-LxTreePreviewLines {
             PrefixText      = $branch
             Text            = $child.Name
             ForegroundColor = Get-LxTreePreviewForegroundColor -Item $child
+            HyperlinkUri    = Get-LxHyperlinkUri -Item $child -Options $Options
         })
     }
 
@@ -867,6 +952,7 @@ function ConvertTo-LxDisplayRow {
         SizeText          = $sizeInfo.SizeText
         RawSize           = [long]$sizeInfo.RawSize
         RenderedName      = Get-LxRenderedName -Item $Item
+        HyperlinkUri      = Get-LxHyperlinkUri -Item $Item -Options $Options
         IsDirectory       = [bool]$Item.PSIsContainer
         ContinuationLines = $continuationLines
         NativePrefix      = $NativePrefix
@@ -1094,8 +1180,16 @@ function Write-LxContinuationLines {
             $null
         }
 
+        $hyperlinkUri = if ($line -isnot [string] -and $line.PSObject.Properties.Match('HyperlinkUri').Count -gt 0) {
+            [string]$line.HyperlinkUri
+        }
+        else {
+            ''
+        }
+
         $availableTextWidth = [Math]::Max(0, $viewportWidth - $continuationPrefix.Length - $linePrefix.Length)
         $lineText = Format-LxTreePreviewText -Text $lineText -AvailableWidth $availableTextWidth
+        $lineText = Format-LxHyperlinkText -Text $lineText -Uri $hyperlinkUri
 
         Write-Host -NoNewline $linePrefix -ForegroundColor DarkGray
 
@@ -1150,7 +1244,7 @@ function Write-LxRowBlock {
     }
     Write-Host -NoNewline $sizeSegment -ForegroundColor Gray
     Write-Host -NoNewline $gapAfterSize
-    Write-Host $Row.RenderedName
+    Write-Host (Format-LxHyperlinkText -Text $Row.RenderedName -Uri $Row.HyperlinkUri)
 
     if (-not $Row.PSObject.Properties.Match('ContinuationLines')) {
         return

@@ -1,15 +1,14 @@
-<h1 align="center"><code>lx</code> - ls evolved</h1>
+<h1 align="center">lx</h1>
 
 <div align="center">
   <p>
-    <img src="./screenshots/lx.png" alt="lx command" width="78%" />
+    <img src="./screenshots/lx.png" alt="lx command" width="48%" />
   </p>
 
   <p>
-    <img src="./screenshots/lx-tree-ra.png" alt="lx recursive with inline tree" width="78%" />
+    <img src="./screenshots/lx-tree-ra.png" alt="lx recursive with inline tree" width="48%" />
   </p>
 </div>
-
 
 `lx` is a PowerShell directory listing command with a compact table layout, human-readable sizes, recursive directory-size support, Terminal-Icons integration, and inline tree previews for top-level directories.
 
@@ -20,8 +19,9 @@
 - Directory-size calculation with `-r` flag
 - Size sorting with ascending and descending modes
 - Multiple target path support with separate `Directory: ...` sections
-- Colored file and folder icons in the main Name column using `Terminal-Icons`
+- Colored file and folder icons in the main Name column from `Terminal-Icons`
 - Inline tree previews with `--tree` flag
+- Clickable directory hyperlinks with `--links` in hyperlink-capable terminals
 - Tree preview coloring:
   - folders are blue
   - normal files use the terminal default color
@@ -31,7 +31,6 @@
 ## Requirements
 
 - PowerShell 7 recommended
-- Any one [Nerd Fonts](https://www.nerdfonts.com/) recommended
 - [`Terminal-Icons`](https://github.com/devblackops/Terminal-Icons) recommended
 
 If `Terminal-Icons` is not installed, `lx` still works and falls back to plain names.
@@ -145,6 +144,9 @@ lx -a --tree
 lx -r --tree
 lx -rs --tree
 lx --tree=false
+lx --links
+lx --tree --links
+lx --links=false
 ```
 
 ## Flags
@@ -161,6 +163,8 @@ lx --tree=false
 | `--sort=desc` | Sort top-level rows by size descending. |
 | `--tree` | Show inline tree previews for top-level directories. |
 | `--tree=false` | Explicitly disable tree previews. |
+| `--links` | Make directory names clickable via terminal hyperlinks when supported. |
+| `--links=false` | Explicitly disable clickable directory hyperlinks. |
 | `--clear-cache` | Delete the persistent recursive-size cache file. |
 | `--cache-size` | Show cache metadata, including path, last write time, and cache file size. |
 
@@ -187,6 +191,18 @@ very-long-file-name-th...(+20 more)
 ```
 
 This keeps tree previews readable without changing normal top-level rows.
+
+## Hyperlinks
+
+When `--links` is enabled:
+
+- top-level directory names are rendered as terminal hyperlinks
+- tree-preview directory names are also hyperlinked
+- files remain normal text
+- the exact click gesture depends on your terminal
+- Windows Terminal commonly uses a modifier-assisted click for hyperlinks
+
+If your terminal does not support OSC 8 hyperlinks, `lx` falls back to normal text automatically.
 
 ## Examples
 
