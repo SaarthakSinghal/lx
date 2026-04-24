@@ -54,11 +54,17 @@ lx -r
 lx -rs --tree
 ```
 
-> [!INFO]
-> If you want `lx` available in every PowerShell session, add this line to `$PROFILE`:
+> [!NOTE]
+> To make `lx` available in every PowerShell session, add the following line to your PowerShell profile:
 >
 > ```powershell
-> . 'C:\path\to\lx.ps1'
+> . "C:\path\to\lx.ps1"
+> ```
+>
+> You can open your profile file with:
+>
+> ```powershell
+> notepad $PROFILE
 > ```
 
 ## Requirements
