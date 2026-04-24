@@ -8,6 +8,13 @@ else {
     (Get-Location).Path
 }
 
+$script:LxDirectorySizeScannerMaxDegreeOfParallelism = if ([Environment]::ProcessorCount -gt 1) {
+    [Math]::Min(6, [Environment]::ProcessorCount)
+}
+else {
+    1
+}
+
 function Resolve-LxOptions {
     [CmdletBinding()]
     param(
@@ -470,12 +477,154 @@ function Write-LxCacheInfo {
     Write-Host ''
 }
 
-function Get-LxDirectorySizeBytes {
+function Initialize-LxDirectorySizeScanner {
+    [CmdletBinding()]
+    param()
+
+    if ('Lx.DirectorySizeScanner' -as [type]) {
+        return
+    }
+
+    $typeDefinition = @'
+using System;
+using System.IO;
+using System.IO.Enumeration;
+using System.Threading.Tasks;
+
+namespace Lx
+{
+    public sealed class DirectorySizeResult
+    {
+        public string Path { get; set; }
+        public long Size { get; set; }
+        public bool HadError { get; set; }
+    }
+
+    internal sealed class DirectorySizeEnumerator : FileSystemEnumerator<long>
+    {
+        private readonly string _excludedFullPath;
+        private readonly string _excludedFileName;
+
+        public DirectorySizeEnumerator(string path, string excludedFullPath, string excludedFileName)
+            : base(path, new EnumerationOptions
+            {
+                AttributesToSkip = 0,
+                IgnoreInaccessible = true,
+                RecurseSubdirectories = true,
+                ReturnSpecialDirectories = false
+            })
+        {
+            _excludedFullPath = excludedFullPath;
+            _excludedFileName = excludedFileName ?? string.Empty;
+        }
+
+        protected override bool ShouldIncludeEntry(ref FileSystemEntry entry)
+        {
+            if (entry.IsDirectory)
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrEmpty(_excludedFullPath)
+                && entry.FileName.Equals(_excludedFileName, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(entry.ToFullPath(), _excludedFullPath, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        protected override bool ShouldRecurseIntoEntry(ref FileSystemEntry entry)
+        {
+            return entry.IsDirectory
+                && (entry.Attributes & FileAttributes.ReparsePoint) == 0;
+        }
+
+        protected override long TransformEntry(ref FileSystemEntry entry)
+        {
+            return entry.Length;
+        }
+    }
+
+    public static class DirectorySizeScanner
+    {
+        public static DirectorySizeResult[] MeasureDirectories(string[] paths, string excludedFullPath, int maxDegreeOfParallelism)
+        {
+            if (paths == null || paths.Length == 0)
+            {
+                return Array.Empty<DirectorySizeResult>();
+            }
+
+            var results = new DirectorySizeResult[paths.Length];
+            var effectiveDegree = maxDegreeOfParallelism > 0
+                ? maxDegreeOfParallelism
+                : Environment.ProcessorCount;
+            var excludedFileName = string.IsNullOrWhiteSpace(excludedFullPath)
+                ? string.Empty
+                : Path.GetFileName(excludedFullPath);
+
+            Parallel.For(0, paths.Length, new ParallelOptions
+            {
+                MaxDegreeOfParallelism = effectiveDegree
+            }, index =>
+            {
+                var path = paths[index];
+                long size;
+                var hadError = false;
+
+                try
+                {
+                    size = MeasureDirectory(path, excludedFullPath, excludedFileName);
+                }
+                catch
+                {
+                    size = 0;
+                    hadError = true;
+                }
+
+                results[index] = new DirectorySizeResult
+                {
+                    Path = path,
+                    Size = size,
+                    HadError = hadError
+                };
+            });
+
+            return results;
+        }
+
+        public static long MeasureDirectory(string path, string excludedFullPath)
+        {
+            var excludedFileName = string.IsNullOrWhiteSpace(excludedFullPath)
+                ? string.Empty
+                : Path.GetFileName(excludedFullPath);
+
+            return MeasureDirectory(path, excludedFullPath, excludedFileName);
+        }
+
+        private static long MeasureDirectory(string path, string excludedFullPath, string excludedFileName)
+        {
+            long sum = 0;
+
+            using var enumerator = new DirectorySizeEnumerator(path, excludedFullPath, excludedFileName);
+            while (enumerator.MoveNext())
+            {
+                sum += enumerator.Current;
+            }
+
+            return sum;
+        }
+    }
+}
+'@
+
+    Add-Type -TypeDefinition $typeDefinition -Language CSharp
+}
+
+function Get-LxDirectorySizeCaches {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)]
-        [string]$Path,
-
         [hashtable]$Cache
     )
 
@@ -496,9 +645,238 @@ function Get-LxDirectorySizeBytes {
         $null
     }
 
-    if ($runtimeCache -and $runtimeCache.ContainsKey($Path)) {
-        return [long]$runtimeCache[$Path]
+    [PSCustomObject]@{
+        RuntimeCache    = $runtimeCache
+        PersistentCache = $persistentCache
     }
+}
+
+function Get-LxValidatedCachedDirectorySize {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path,
+
+        [long]$LastWriteTimeUtcTicks,
+
+        [hashtable]$RuntimeCache,
+
+        [hashtable]$PersistentCache
+    )
+
+    if ($RuntimeCache -and $RuntimeCache.ContainsKey($Path)) {
+        return [PSCustomObject]@{
+            Hit    = $true
+            Size   = [long]$RuntimeCache[$Path]
+            Source = 'runtime'
+        }
+    }
+
+    if (-not $PersistentCache -or -not $PersistentCache.ContainsKey($Path)) {
+        return $null
+    }
+
+    $entry = $PersistentCache[$Path]
+    $maxAgeTicks = (Get-LxSizeCacheTtl).Ticks
+    $entryAgeTicks = [DateTime]::UtcNow.Ticks - [long]$entry['CachedAtUtcTicks']
+    $isValid = (
+        $entryAgeTicks -ge 0 -and
+        $entryAgeTicks -le $maxAgeTicks -and
+        [long]$entry['LastWriteTimeUtcTicks'] -eq [long]$LastWriteTimeUtcTicks
+    )
+
+    if (-not $isValid) {
+        $null = $PersistentCache.Remove($Path)
+        return $null
+    }
+
+    $cachedSize = [long]$entry['Size']
+    if ($RuntimeCache) {
+        $RuntimeCache[$Path] = $cachedSize
+    }
+
+    [PSCustomObject]@{
+        Hit    = $true
+        Size   = $cachedSize
+        Source = 'persistent'
+    }
+}
+
+function Invoke-LxDirectorySizeScanBatch {
+    [CmdletBinding()]
+    param(
+        [AllowEmptyCollection()]
+        [string[]]$Paths,
+
+        [int]$MaxDegreeOfParallelism = $script:LxDirectorySizeScannerMaxDegreeOfParallelism
+    )
+
+    $scanPaths = @($Paths | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($scanPaths.Count -eq 0) {
+        return @()
+    }
+
+    Initialize-LxDirectorySizeScanner
+
+    $cacheFilePath = Get-LxPersistentSizeCachePath
+    @([Lx.DirectorySizeScanner]::MeasureDirectories(
+            [string[]]$scanPaths,
+            $cacheFilePath,
+            $MaxDegreeOfParallelism))
+}
+
+function Get-LxDirectorySizePlan {
+    [CmdletBinding()]
+    param(
+        [AllowEmptyCollection()]
+        [object[]]$Items,
+
+        [hashtable]$Cache
+    )
+
+    $stores = Get-LxDirectorySizeCaches -Cache $Cache
+    $pendingDirectories = [System.Collections.Generic.List[object]]::new()
+    $seenPaths = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $cacheHitCount = 0
+    $runtimeHitCount = 0
+    $persistentHitCount = 0
+
+    foreach ($item in @($Items)) {
+        if (-not $item -or -not $item.PSIsContainer) {
+            continue
+        }
+
+        $path = [string]$item.FullName
+        if (-not $seenPaths.Add($path)) {
+            continue
+        }
+
+        $lastWriteTimeUtcTicks = [long]$item.LastWriteTimeUtc.Ticks
+        $cachedSize = Get-LxValidatedCachedDirectorySize -Path $path -LastWriteTimeUtcTicks $lastWriteTimeUtcTicks -RuntimeCache $stores.RuntimeCache -PersistentCache $stores.PersistentCache
+
+        if ($cachedSize) {
+            $cacheHitCount++
+            if ($cachedSize.Source -eq 'runtime') {
+                $runtimeHitCount++
+            }
+            elseif ($cachedSize.Source -eq 'persistent') {
+                $persistentHitCount++
+            }
+
+            continue
+        }
+
+        $null = $pendingDirectories.Add([PSCustomObject]@{
+                Path                  = $path
+                LastWriteTimeUtcTicks = $lastWriteTimeUtcTicks
+            })
+    }
+
+    [PSCustomObject]@{
+        RuntimeCache       = $stores.RuntimeCache
+        PersistentCache    = $stores.PersistentCache
+        PendingDirectories = @($pendingDirectories)
+        DirectoryCount     = $seenPaths.Count
+        CacheHitCount      = $cacheHitCount
+        RuntimeHitCount    = $runtimeHitCount
+        PersistentHitCount = $persistentHitCount
+    }
+}
+
+function Merge-LxDirectorySizeResults {
+    [CmdletBinding()]
+    param(
+        [AllowEmptyCollection()]
+        [object[]]$Results,
+
+        [hashtable]$RuntimeCache,
+
+        [hashtable]$PersistentCache
+    )
+
+    $nowTicks = [DateTime]::UtcNow.Ticks
+    $mergedCount = 0
+
+    foreach ($result in @($Results)) {
+        $path = [string]$result.Path
+        $size = [long]$result.Size
+
+        if ($RuntimeCache) {
+            $RuntimeCache[$path] = $size
+        }
+
+        if ($PersistentCache) {
+            $PersistentCache[$path] = @{
+                Size                  = $size
+                CachedAtUtcTicks      = $nowTicks
+                LastWriteTimeUtcTicks = [long]$result.LastWriteTimeUtcTicks
+            }
+        }
+
+        $mergedCount++
+    }
+
+    $mergedCount
+}
+
+function Prime-LxDirectorySizes {
+    [CmdletBinding()]
+    param(
+        [AllowEmptyCollection()]
+        [object[]]$PathGroups,
+
+        [Parameter(Mandatory)]
+        [object]$Options,
+
+        [hashtable]$DirectorySizeCache
+    )
+
+    if (-not $Options.RecurseSize) {
+        return
+    }
+
+    $directoryItems = foreach ($pathGroup in @($PathGroups)) {
+        foreach ($item in @($pathGroup.Items)) {
+            if ($item.PSIsContainer) {
+                $item
+            }
+        }
+    }
+
+    $plan = Get-LxDirectorySizePlan -Items @($directoryItems) -Cache $DirectorySizeCache
+    if ($plan.PendingDirectories.Count -eq 0) {
+        return
+    }
+
+    $lastWriteTimeByPath = @{}
+    foreach ($directory in @($plan.PendingDirectories)) {
+        $lastWriteTimeByPath[[string]$directory.Path] = [long]$directory.LastWriteTimeUtcTicks
+    }
+
+    $results = foreach ($result in @(Invoke-LxDirectorySizeScanBatch -Paths @($plan.PendingDirectories.Path))) {
+        [PSCustomObject]@{
+            Path                  = [string]$result.Path
+            Size                  = [long]$result.Size
+            HadError              = [bool]$result.HadError
+            LastWriteTimeUtcTicks = if ($lastWriteTimeByPath.ContainsKey([string]$result.Path)) { [long]$lastWriteTimeByPath[[string]$result.Path] } else { [long]0 }
+        }
+    }
+
+    $null = Merge-LxDirectorySizeResults -Results @($results) -RuntimeCache $plan.RuntimeCache -PersistentCache $plan.PersistentCache
+}
+
+function Get-LxDirectorySizeBytes {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path,
+
+        [hashtable]$Cache
+    )
+
+    $stores = Get-LxDirectorySizeCaches -Cache $Cache
+    $runtimeCache = $stores.RuntimeCache
+    $persistentCache = $stores.PersistentCache
 
     $directoryItem = $null
     try {
@@ -507,46 +885,25 @@ function Get-LxDirectorySizeBytes {
     catch {
     }
 
-    if ($persistentCache -and $persistentCache.ContainsKey($Path)) {
-        $entry = $persistentCache[$Path]
-        $currentLastWriteTimeUtcTicks = if ($directoryItem) {
-            [long]$directoryItem.LastWriteTimeUtc.Ticks
-        }
-        else {
-            [long]0
-        }
+    $currentLastWriteTimeUtcTicks = if ($directoryItem) {
+        [long]$directoryItem.LastWriteTimeUtc.Ticks
+    }
+    else {
+        [long]0
+    }
 
-        $maxAgeTicks = (Get-LxSizeCacheTtl).Ticks
-        $entryAgeTicks = [DateTime]::UtcNow.Ticks - [long]$entry['CachedAtUtcTicks']
-
-        if ($entryAgeTicks -ge 0 -and $entryAgeTicks -le $maxAgeTicks -and [long]$entry['LastWriteTimeUtcTicks'] -eq $currentLastWriteTimeUtcTicks) {
-            $cachedSize = [long]$entry['Size']
-
-            if ($runtimeCache) {
-                $runtimeCache[$Path] = $cachedSize
-            }
-
-            return $cachedSize
-        }
-
-        $null = $persistentCache.Remove($Path)
+    $cachedSize = Get-LxValidatedCachedDirectorySize -Path $Path -LastWriteTimeUtcTicks $currentLastWriteTimeUtcTicks -RuntimeCache $runtimeCache -PersistentCache $persistentCache
+    if ($cachedSize) {
+        return [long]$cachedSize.Size
     }
 
     try {
-        $cacheFilePath = Get-LxPersistentSizeCachePath
-        $files = @(Get-ChildItem -LiteralPath $Path -Recurse -Force -File -ErrorAction SilentlyContinue)
-
-        if (-not [string]::IsNullOrWhiteSpace($cacheFilePath)) {
-            $files = @($files | Where-Object { $_.FullName -ne $cacheFilePath })
-        }
-
-        $sum = ($files | Measure-Object -Property Length -Sum).Sum
-
-        $size = if ($null -eq $sum) {
-            [long]0
+        $scanResult = @(Invoke-LxDirectorySizeScanBatch -Paths @($Path) -MaxDegreeOfParallelism 1) | Select-Object -First 1
+        $size = if ($scanResult) {
+            [long]$scanResult.Size
         }
         else {
-            [long]$sum
+            [long]0
         }
 
         if ($runtimeCache) {
@@ -557,12 +914,7 @@ function Get-LxDirectorySizeBytes {
             $persistentCache[$Path] = @{
                 Size                  = $size
                 CachedAtUtcTicks      = [DateTime]::UtcNow.Ticks
-                LastWriteTimeUtcTicks = if ($directoryItem) {
-                    [long]$directoryItem.LastWriteTimeUtc.Ticks
-                }
-                else {
-                    [long]0
-                }
+                LastWriteTimeUtcTicks = $currentLastWriteTimeUtcTicks
             }
         }
 
@@ -577,12 +929,7 @@ function Get-LxDirectorySizeBytes {
             $persistentCache[$Path] = @{
                 Size                  = [long]0
                 CachedAtUtcTicks      = [DateTime]::UtcNow.Ticks
-                LastWriteTimeUtcTicks = if ($directoryItem) {
-                    [long]$directoryItem.LastWriteTimeUtc.Ticks
-                }
-                else {
-                    [long]0
-                }
+                LastWriteTimeUtcTicks = $currentLastWriteTimeUtcTicks
             }
         }
 
@@ -633,8 +980,43 @@ function Get-LxRenderedName {
         [System.IO.FileSystemInfo]$Item
     )
 
+    function Replace-LxIconPreserveStyle {
+        param(
+            [Parameter(Mandatory)]
+            [string]$RenderedName,
+
+            [Parameter(Mandatory)]
+            [string]$NewIcon,
+
+            [Parameter(Mandatory)]
+            [string]$FallbackName
+        )
+
+        $escape = [char]27
+        $escapedEscape = [regex]::Escape([string]$escape)
+        $pattern = "^(?<prefix>(?:${escapedEscape}\[[0-9;]*m)*).+?(?<gap>\s{2})(?<name>.+?)(?<suffix>(?:${escapedEscape}\[[0-9;]*m)*)$"
+
+        if ($RenderedName -match $pattern) {
+            return "$($matches.prefix)$NewIcon$($matches.gap)$($matches.name)$($matches.suffix)"
+        }
+
+        return "$NewIcon  $FallbackName"
+    }
+
     $formatter = Get-Command -Name Format-TerminalIcons -ErrorAction SilentlyContinue
     if (-not $formatter) {
+        if ($Item.PSIsContainer) {
+            switch -Regex ($Item.Name) {
+                '^Downloads$' { return "󰉍  $($Item.Name)" }
+                '^Videos$'    { return "󛿺  $($Item.Name)" }
+                '^Desktop$'   { return "  $($Item.Name)" }
+                '^Contacts$'  { return "󰛋  $($Item.Name)" }
+                '^Pictures$'  { return "󰉏  $($Item.Name)" }
+                '^Music$'     { return "󰲸  $($Item.Name)" }
+                '^OneDrive$'  { return "󰅧  $($Item.Name)" }
+            }
+        }
+
         if ($Item.Extension -in @('.md', '.markdown')) {
             return "  $($Item.Name)"
         }
@@ -644,18 +1026,23 @@ function Get-LxRenderedName {
 
     $renderedName = (($Item | Format-TerminalIcons | Out-String).Trim())
 
-    if ($Item.Extension -notin @('.md', '.markdown')) {
-        return $renderedName
+    if ($Item.PSIsContainer) {
+        switch -Regex ($Item.Name) {
+            '^Downloads$' { return (Replace-LxIconPreserveStyle -RenderedName $renderedName -NewIcon "󰉍" -FallbackName $Item.Name) }
+            '^Videos$'    { return (Replace-LxIconPreserveStyle -RenderedName $renderedName -NewIcon "󱧺" -FallbackName $Item.Name) }
+            '^Desktop$'   { return (Replace-LxIconPreserveStyle -RenderedName $renderedName -NewIcon "" -FallbackName $Item.Name) }
+            '^Contacts$'  { return (Replace-LxIconPreserveStyle -RenderedName $renderedName -NewIcon "󰛋" -FallbackName $Item.Name) }
+            '^Pictures$'  { return (Replace-LxIconPreserveStyle -RenderedName $renderedName -NewIcon "󰉏" -FallbackName $Item.Name) }
+            '^Music$'     { return (Replace-LxIconPreserveStyle -RenderedName $renderedName -NewIcon "󰲸" -FallbackName $Item.Name) }
+            '^OneDrive$'  { return (Replace-LxIconPreserveStyle -RenderedName $renderedName -NewIcon "󰅧" -FallbackName $Item.Name) }
+        }
     }
 
-    $escape = [char]27
-    $pattern = "^(?<prefix>(?:$([regex]::Escape($escape))\[[0-9;]*m)*).+?(?<gap>\s{2})(?<name>.+?)(?<suffix>(?:$([regex]::Escape($escape))\[[0-9;]*m)*)$"
-
-    if ($renderedName -match $pattern) {
-        return "$($matches.prefix)$($matches.gap)$($matches.name)$($matches.suffix)"
+    if ($Item.Extension -in @('.md', '.markdown')) {
+        return (Replace-LxIconPreserveStyle -RenderedName $renderedName -NewIcon "" -FallbackName $Item.Name)
     }
 
-    "  $($Item.Name)"
+    return $renderedName
 }
 
 function Test-LxHyperlinkSupport {
@@ -1349,6 +1736,8 @@ function lx {
     }
     $previewCache = @{}
     $pathGroups = @(Get-LxTopLevelItems -Options $options)
+
+    Prime-LxDirectorySizes -PathGroups @($pathGroups) -Options $options -DirectorySizeCache $directorySizeCache
 
     Write-Host ''
 
