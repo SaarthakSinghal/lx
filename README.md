@@ -22,10 +22,10 @@
 
 - [Quick Start](#quick-start)
 - [Requirements](#requirements)
-- [Install](#install)
 - [Core Commands](#core-commands)
 - [Flags Reference](#flags-reference)
 - [Performance And Cache](#performance-and-cache)
+- [Benchmark Results](#benchmark-results)
 - [Tree Mode](#tree-mode)
 - [Hyperlinks](#hyperlinks)
 - [Behavior Notes](#behavior-notes)
@@ -54,18 +54,15 @@ lx -r
 lx -rs --tree
 ```
 
-> [!NOTE]
-> To make `lx` available in every PowerShell session, add the following line to your PowerShell profile:
+> [!INFO]
+> If you want `lx` available in every PowerShell session, add this line to `$PROFILE`:
 >
 > ```powershell
-> . "C:\path\to\lx.ps1"
+> . 'C:\path\to\lx.ps1'
 > ```
->
-> You can open your profile file with:
->
-> ```powershell
-> notepad $PROFILE
-> ```
+
+> [!IMPORTANT]
+> Put the dot-source line near the end of `$PROFILE` so later profile code does not overwrite the function.
 
 ## Requirements
 
@@ -84,55 +81,6 @@ lx -rs --tree
 - `lx` still works without `Terminal-Icons`; it just falls back to plain names or built-in icon replacements
 - `lx` still runs without a Nerd Font, but icon glyphs may look broken or incomplete
 - recursive size caching is stored beside the script as `.lx-size-cache.json`
-
-## Install
-
-### Manual Install
-
-### Option 1: Load In The Current Session
-
-Dot-source the script from its full path:
-
-```powershell
-. 'C:\path\to\lx.ps1'
-```
-
-Then run:
-
-```powershell
-lx
-```
-
-### Option 2: Add It To `$PROFILE`
-
-1. Put `lx.ps1` in a permanent folder.
-2. Open your PowerShell profile.
-3. Add a dot-source line that points to that file.
-4. Reload the profile.
-
-Example:
-
-```powershell
-notepad $PROFILE
-```
-
-Add this line to `$PROFILE`:
-
-```powershell
-. 'C:\path\to\lx.ps1'
-```
-
-Reload and test:
-
-```powershell
-. $PROFILE
-lx
-lx --tree
-lx -r
-```
-
-> [!IMPORTANT]
-> Put the dot-source line near the end of `$PROFILE` so later profile code does not overwrite the function.
 
 ## Core Commands
 
@@ -218,6 +166,7 @@ lx --tree --links
     <tr><td><code>--links=false</code></td><td>Disable clickable links explicitly.</td></tr>
     <tr><td><code>--clear-cache</code></td><td>Delete the persistent recursive-size cache file.</td></tr>
     <tr><td><code>--cache-size</code></td><td>Print cache path, last write time, and cache file size.</td></tr>
+    <tr><td><code>--help</code></td><td>Show the built-in help screen with usage, flags, examples, and notes.</td></tr>
   </tbody>
 </table>
 
@@ -256,6 +205,118 @@ lx --cache-size
 lx --clear-cache
 ```
 
+## Benchmark Results
+
+> [!NOTE]
+> The comparison below assumes `lx` is already loaded from `$PROFILE`, so the commands are measured in a normal PowerShell session after the shell is ready. It does not include fresh-shell startup time.
+
+Benchmark target: `C:\Users\saart\Projects\testcode`
+
+- top-level entries: `7`
+- recursive file count: `73,114`
+- total size : `1.91 GB`
+
+### Commands Used
+
+```powershell
+## Plain top-level listing
+lx .
+ls . -Force | Format-Table -AutoSize
+
+## Tree view
+lx --tree .
+tree /A .
+
+## Recursive size runs
+lx --clear-cache
+lx -r .
+lx -r .
+```
+
+### Feature Comparison
+
+<table>
+  <thead>
+    <tr>
+      <th width="260">Capability</th>
+      <th width="280"><code>lx</code></th>
+      <th>Windows <code>ls</code> / nearest built-in command</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Human-readable file sizes</td>
+      <td>Built in, with <code>B</code>, <code>KB</code>, <code>MB</code>, <code>GB</code>, and above</td>
+      <td>Raw byte counts only</td>
+    </tr>
+    <tr>
+      <td>Folder total sizes</td>
+      <td>Built in with <code>-r</code></td>
+      <td>No direct equivalent</td>
+    </tr>
+    <tr>
+      <td>Compact tree preview</td>
+      <td>Built in with <code>--tree</code></td>
+      <td>No <code>ls</code> equivalent</td>
+    </tr>
+    <tr>
+      <td>Clickable directory links</td>
+      <td>Built in with <code>--links</code></td>
+      <td>No direct equivalent</td>
+    </tr>
+    <tr>
+      <td>Warm-cache repeat runs</td>
+      <td>Built in for recursive size mode</td>
+      <td>No direct equivalent</td>
+    </tr>
+  </tbody>
+</table>
+
+### Timing Comparison
+
+<table>
+  <thead>
+    <tr>
+      <th width="260">Scenario</th>
+      <th width="180"><code>lx</code></th>
+      <th width="220">Windows Baseline</th>
+      <th>Winner</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Plain top-level listing</td>
+      <td>18.39 ms</td>
+      <td>9.51 ms</td>
+      <td><code>ls</code></td>
+    </tr>
+    <tr>
+      <td>Tree view</td>
+      <td>24.83 ms</td>
+      <td>603.41 ms</td>
+      <td><code>lx</code></td>
+    </tr>
+    <tr>
+      <td>Recursive size cold run</td>
+      <td>358.63 ms</td>
+      <td>2211.96 ms</td>
+      <td><code>lx</code></td>
+    </tr>
+    <tr>
+      <td>Recursive size warm run</td>
+      <td>19.33 ms</td>
+      <td>2211.96 ms</td>
+      <td><code>lx</code></td>
+    </tr>
+  </tbody>
+</table>
+
+### Practical Takeaways
+
+- `ls` is still faster when you only want a plain top-level listing with minimal formatting.
+- `lx` becomes much more useful once you care about readable sizes, recursive totals, compact tree previews, cache-aware repeat runs, and clickable paths.
+- The strongest performance case for `lx` on Windows is `-r`, where cold runs are faster than a manual PowerShell recursive-size approach and warm runs are substantially faster again.
+
 ## Tree Mode
 
 When `--tree` is enabled:
@@ -263,7 +324,6 @@ When `--tree` is enabled:
 - only top-level directories get previews
 - files remain single-line rows
 - preview depth is currently fixed at `1`
-- only immediate children are shown
 - preview children are always sorted by name
 - previews respect `-a`
 - unreadable directories fail closed and simply show no preview lines
@@ -342,4 +402,3 @@ lx -r
 - [`MartianMono Nerd Font`](https://www.nerdfonts.com/font-downloads#:~:text=Version%3A%201%2E1%2E0) used for proper rendering of the icon glyphs
 - [`Firewatch`](https://windowsterminalthemes.dev/?theme=Firewatch) windows terminal theme used to improve UI
 - Unicode box-drawing characters for inline tree preview rendering
-  

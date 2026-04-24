@@ -40,6 +40,7 @@ function Resolve-LxOptions {
     $linksMode = $null
     $clearCache = $false
     $showCacheInfo = $false
+    $showHelp = $false
     $targetPaths = [System.Collections.Generic.List[object]]::new()
 
     foreach ($arg in $RemainingArgs) {
@@ -66,6 +67,9 @@ function Resolve-LxOptions {
         }
         elseif ($arg -is [string] -and $arg -eq '--cache-size') {
             $showCacheInfo = $true
+        }
+        elseif ($arg -is [string] -and ($arg -eq '--help' -or $arg -eq '-h')) {
+            $showHelp = $true
         }
         elseif ($arg -is [string] -and $arg -like '--tree=*') {
             $value = $arg.Substring(7).ToLowerInvariant()
@@ -126,11 +130,109 @@ function Resolve-LxOptions {
         LinksEnabled  = $linksEnabled
         ClearCache    = $clearCache
         ShowCacheInfo = $showCacheInfo
+        ShowHelp      = $showHelp
         # Keep TreeDepth in the options shape so future --tree-depth work does not
         # need to restructure the renderer contract again.
         TreeDepth     = 1
         TargetPaths   = @($targetPaths)
     }
+}
+
+function Write-LxHelpSectionHeading {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Title,
+
+        [string]$Description
+    )
+
+    Write-Host ''
+    Write-Host "  $Title" -ForegroundColor Green
+
+    if (-not [string]::IsNullOrWhiteSpace($Description)) {
+        Write-Host "  $Description" -ForegroundColor DarkGray
+    }
+}
+
+function Write-LxHelpOptionRow {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Flag,
+
+        [Parameter(Mandatory)]
+        [string]$Description,
+
+        [int]$FlagWidth = 28
+    )
+
+    Write-Host -NoNewline '  '
+    Write-Host -NoNewline $Flag.PadRight($FlagWidth) -ForegroundColor Yellow
+    Write-Host $Description -ForegroundColor Gray
+}
+
+function Write-LxHelpExampleRow {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Command,
+
+        [Parameter(Mandatory)]
+        [string]$Description,
+
+        [int]$CommandWidth = 34
+    )
+
+    Write-Host -NoNewline '  '
+    Write-Host -NoNewline $Command.PadRight($CommandWidth) -ForegroundColor Cyan
+    Write-Host $Description -ForegroundColor Gray
+}
+
+function Write-LxHelp {
+    [CmdletBinding()]
+    param()
+
+    Write-Host ''
+    Write-Host '  lx' -ForegroundColor Green -NoNewline
+    Write-Host '  fast, readable directory listings for PowerShell' -ForegroundColor Gray
+    Write-Host '  Recursive sizes, cache-aware scans, tree previews, and clickable paths.' -ForegroundColor DarkGray
+
+    Write-LxHelpSectionHeading -Title 'USAGE' -Description 'Run lx in the current directory or pass one or more paths.'
+    Write-Host '  lx [flags] [paths...]' -ForegroundColor White
+
+    Write-LxHelpSectionHeading -Title 'FLAGS' -Description 'Mix short flags and long options as needed.'
+    Write-LxHelpOptionRow -Flag '-a' -Description 'Show hidden files and folders.'
+    Write-LxHelpOptionRow -Flag '-r' -Description 'Calculate recursive sizes for top-level directories and show the folder total.'
+    Write-LxHelpOptionRow -Flag '-s' -Description 'Sort top-level rows by size descending.'
+    Write-LxHelpOptionRow -Flag '-rs' -Description 'Enable recursive sizes and descending size sort.'
+    Write-LxHelpOptionRow -Flag '-ra' -Description 'Enable recursive sizes and hidden/all-files mode.'
+    Write-LxHelpOptionRow -Flag '-rsa' -Description 'Enable recursive sizes, size sort, and hidden/all-files mode.'
+    Write-LxHelpOptionRow -Flag '--sort=asc' -Description 'Sort top-level rows by size ascending.'
+    Write-LxHelpOptionRow -Flag '--sort=desc' -Description 'Sort top-level rows by size descending.'
+    Write-LxHelpOptionRow -Flag '--tree' -Description 'Show one-level inline tree previews for top-level directories.'
+    Write-LxHelpOptionRow -Flag '--tree=false' -Description 'Disable tree previews explicitly.'
+    Write-LxHelpOptionRow -Flag '--links' -Description 'Make displayed directories clickable when the terminal supports hyperlinks.'
+    Write-LxHelpOptionRow -Flag '--links=false' -Description 'Disable clickable hyperlinks explicitly.'
+    Write-LxHelpOptionRow -Flag '--clear-cache' -Description 'Delete the persistent recursive-size cache file.'
+    Write-LxHelpOptionRow -Flag '--cache-size' -Description 'Show cache path, last write time, and cache file size.'
+    Write-LxHelpOptionRow -Flag '--help' -Description 'Show this help screen.'
+
+    Write-LxHelpSectionHeading -Title 'EXAMPLES' -Description 'Common ways to use lx day to day.'
+    Write-LxHelpExampleRow -Command 'lx' -Description 'List the current directory.'
+    Write-LxHelpExampleRow -Command 'lx -r' -Description 'Show recursive directory sizes plus the current folder total.'
+    Write-LxHelpExampleRow -Command 'lx -rs --tree' -Description 'Sort by recursive size and show one-level previews.'
+    Write-LxHelpExampleRow -Command 'lx -ra C:\Users\saart\Projects' -Description 'Include hidden entries for a specific directory.'
+    Write-LxHelpExampleRow -Command 'lx --links .' -Description 'Enable clickable directory links for the current path.'
+    Write-LxHelpExampleRow -Command 'lx --cache-size' -Description 'Inspect the recursive-size cache.'
+    Write-LxHelpExampleRow -Command 'lx --clear-cache' -Description 'Clear cached recursive-size results.'
+
+    Write-LxHelpSectionHeading -Title 'NOTES' -Description 'A few practical details that matter.'
+    Write-Host '  Recursive sizes are cached beside the script for five minutes to keep repeated runs fast.' -ForegroundColor Gray
+    Write-Host '  The recursive scanner skips reparse-point recursion, ignores inaccessible entries, and excludes .lx-size-cache.json from totals.' -ForegroundColor Gray
+    Write-Host '  Terminal-Icons and a Nerd Font give the best visual output, but lx still works without them.' -ForegroundColor Gray
+
+    Write-Host ''
 }
 
 function Get-LxTopLevelItems {
@@ -169,14 +271,19 @@ function Get-LxTopLevelItems {
 
             if (-not $groupMap.ContainsKey($resolvedDisplayPath)) {
                 $group = [PSCustomObject]@{
-                    DisplayPath  = $displayPath
-                    ResolvedPath = $resolvedDisplayPath
-                    Items        = [System.Collections.Generic.List[object]]::new()
-                    ItemPaths    = [System.Collections.Generic.HashSet[string]]::new()
+                    DisplayPath               = $displayPath
+                    ResolvedPath              = $resolvedDisplayPath
+                    Items                     = [System.Collections.Generic.List[object]]::new()
+                    ItemPaths                 = [System.Collections.Generic.HashSet[string]]::new()
+                    RepresentsDirectoryListing = [bool]$item.PSIsContainer
                 }
 
                 $groupMap[$resolvedDisplayPath] = $group
                 $null = $groupOrder.Add($group)
+            }
+
+            if ($item.PSIsContainer) {
+                $groupMap[$resolvedDisplayPath].RepresentsDirectoryListing = $true
             }
 
             foreach ($childItem in $items) {
@@ -190,9 +297,10 @@ function Get-LxTopLevelItems {
 
     @($groupOrder | ForEach-Object {
         [PSCustomObject]@{
-            DisplayPath  = $_.DisplayPath
-            ResolvedPath = $_.ResolvedPath
-            Items        = @($_.Items)
+            DisplayPath               = $_.DisplayPath
+            ResolvedPath              = $_.ResolvedPath
+            Items                     = @($_.Items)
+            RepresentsDirectoryListing = [bool]$_.RepresentsDirectoryListing
         }
     })
 }
@@ -1021,10 +1129,6 @@ function Get-LxRenderedName {
             return "  $($Item.Name)"
         }
 
-        if ($Item.Extension -in @('.ps1')) {
-            return " $($Item.Name)"
-        }
-
         return $Item.Name
     }
 
@@ -1044,10 +1148,6 @@ function Get-LxRenderedName {
 
     if ($Item.Extension -in @('.md', '.markdown')) {
         return (Replace-LxIconPreserveStyle -RenderedName $renderedName -NewIcon "" -FallbackName $Item.Name)
-    }
-
-    if ($Item.Extension -in @('.ps1')) {
-        return (Replace-LxIconPreserveStyle -RenderedName $renderedName -NewIcon "" -FallbackName $Item.Name)
     }
 
     return $renderedName
@@ -1112,6 +1212,28 @@ function Format-LxHyperlinkText {
     }
     catch {
         return $Text
+    }
+}
+
+function Get-LxPathGroupHyperlinkUri {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [object]$PathGroup,
+
+        [Parameter(Mandatory)]
+        [object]$Options
+    )
+
+    if (-not $Options.LinksEnabled -or -not (Test-LxHyperlinkSupport)) {
+        return $null
+    }
+
+    try {
+        return ([System.Uri][string]$PathGroup.ResolvedPath).AbsoluteUri
+    }
+    catch {
+        return $null
     }
 }
 
@@ -1648,6 +1770,71 @@ function Write-LxRowBlock {
     Write-LxContinuationLines -Lines @($Row.ContinuationLines) -ColumnWidths $ColumnWidths
 }
 
+function Get-LxPathGroupTotalSizeInfo {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [object]$PathGroup,
+
+        [Parameter(Mandatory)]
+        [object]$Options,
+
+        [AllowEmptyCollection()]
+        [object[]]$Rows
+    )
+
+    if (-not $Options.RecurseSize) {
+        return $null
+    }
+
+    if (-not $PathGroup.RepresentsDirectoryListing) {
+        return $null
+    }
+
+    $totalBytes = [long]0
+
+    foreach ($row in @($Rows)) {
+        $rawSize = if ($null -ne $row.RawSize) { [long]$row.RawSize } else { [long]-1 }
+
+        if ($rawSize -ge 0) {
+            $totalBytes += $rawSize
+        }
+    }
+
+    [PSCustomObject]@{
+        RawSize  = $totalBytes
+        SizeText = Format-LxHumanSize -Bytes $totalBytes
+    }
+}
+
+function Write-LxPathGroupMetaLine {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Label,
+
+        [Parameter(Mandatory)]
+        [string]$Value,
+
+        [string]$Indent = '    ',
+
+        [int]$LabelWidth = 11,
+
+        [ConsoleColor]$LabelColor = [ConsoleColor]::DarkGray,
+
+        [ConsoleColor]$ValueColor = [ConsoleColor]::White,
+
+        [string]$ValueUri
+    )
+
+    $formattedValue = Format-LxHyperlinkText -Text $Value -Uri $ValueUri
+
+    Write-Host -NoNewline $Indent -ForegroundColor Gray
+    Write-Host -NoNewline ($Label.PadRight($LabelWidth)) -ForegroundColor $LabelColor
+    Write-Host -NoNewline ': ' -ForegroundColor $LabelColor
+    Write-Host $formattedValue -ForegroundColor $ValueColor
+}
+
 function Write-LxPathGroup {
     [CmdletBinding()]
     param(
@@ -1681,12 +1868,19 @@ function Write-LxPathGroup {
     $columnWidths.PrefixWidth = $nativeLayout.PrefixWidth
     $columnWidths.HeaderPrefix = $nativeLayout.HeaderPrefix
     $columnWidths.UnderlinePrefix = $nativeLayout.UnderlinePrefix
+    $pathGroupTotal = Get-LxPathGroupTotalSizeInfo -PathGroup $PathGroup -Options $Options -Rows @($rows)
+    $pathGroupHyperlinkUri = Get-LxPathGroupHyperlinkUri -PathGroup $PathGroup -Options $Options
 
     if ($IncludeLeadingBlankLine) {
         Write-Host ''
     }
 
-    Write-Host "    Directory: $($PathGroup.DisplayPath)"
+    Write-LxPathGroupMetaLine -Label 'Directory' -Value $PathGroup.DisplayPath -ValueColor White -ValueUri $pathGroupHyperlinkUri
+
+    if ($null -ne $pathGroupTotal) {
+        Write-LxPathGroupMetaLine -Label 'Total' -Value $pathGroupTotal.SizeText -ValueColor Green
+    }
+
     Write-Host ''
     Write-LxHeader -ColumnWidths $columnWidths
 
@@ -1711,6 +1905,11 @@ function lx {
 
     $options = Resolve-LxOptions -r:$r -s:$s -a:$a -rs:$rs -rsa:$rsa -ra:$ra -RemainingArgs $RemainingArgs
     if ($null -eq $options) {
+        return
+    }
+
+    if ($options.ShowHelp) {
+        Write-LxHelp
         return
     }
 
