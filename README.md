@@ -182,22 +182,30 @@ lx --tree --links
 
 ## Flags Reference
 
-| Flag | What It Does |
-| --- | --- |
-| `-a` | Show hidden files and folders. |
-| `-r` | Calculate recursive directory sizes for top-level directories. |
-| `-s` | Sort top-level rows by size descending. |
-| `-rs` | Enable recursive sizes and descending size sort. |
-| `-ra` | Enable recursive sizes and hidden/all-files mode. |
-| `-rsa` | Enable recursive sizes, size sort, and hidden/all-files mode. |
-| `--sort=asc` | Sort top-level rows by size ascending. |
-| `--sort=desc` | Sort top-level rows by size descending. |
-| `--tree` | Show one-level inline tree previews for top-level directories. |
-| `--tree=false` | Disable tree previews explicitly. |
-| `--links` | Make top-level directories and tree-preview directories clickable when the terminal supports hyperlinks. |
-| `--links=false` | Disable clickable links explicitly. |
-| `--clear-cache` | Delete the persistent recursive-size cache file. |
-| `--cache-size` | Print cache path, last write time, and cache file size. |
+<table>
+  <thead>
+    <tr>
+      <th width="220">Flag</th>
+      <th>What It Does</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><code>-a</code></td><td>Show hidden files and folders.</td></tr>
+    <tr><td><code>-r</code></td><td>Calculate recursive directory sizes for top-level directories.</td></tr>
+    <tr><td><code>-s</code></td><td>Sort top-level rows by size descending.</td></tr>
+    <tr><td><code>-rs</code></td><td>Enable recursive sizes and descending size sort.</td></tr>
+    <tr><td><code>-ra</code></td><td>Enable recursive sizes and hidden/all-files mode.</td></tr>
+    <tr><td><code>-rsa</code></td><td>Enable recursive sizes, size sort, and hidden/all-files mode.</td></tr>
+    <tr><td><code>--sort=asc</code></td><td>Sort top-level rows by size ascending.</td></tr>
+    <tr><td><code>--sort=desc</code></td><td>Sort top-level rows by size descending.</td></tr>
+    <tr><td><code>--tree</code></td><td>Show one-level inline tree previews for top-level directories.</td></tr>
+    <tr><td><code>--tree=false</code></td><td>Disable tree previews explicitly.</td></tr>
+    <tr><td><code>--links</code></td><td>Make top-level directories and tree-preview directories clickable when the terminal supports hyperlinks.</td></tr>
+    <tr><td><code>--links=false</code></td><td>Disable clickable links explicitly.</td></tr>
+    <tr><td><code>--clear-cache</code></td><td>Delete the persistent recursive-size cache file.</td></tr>
+    <tr><td><code>--cache-size</code></td><td>Print cache path, last write time, and cache file size.</td></tr>
+  </tbody>
+</table>
 
 ## Performance And Cache
 
@@ -289,7 +297,7 @@ Unblock the file once:
 Unblock-File .\lx.ps1
 ```
 
-### `lx` Is Not Found
+### `lx` Not Found
 
 Make sure you dot-sourced the script:
 
