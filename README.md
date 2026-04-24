@@ -8,11 +8,11 @@
 
 <div align="center">
   <p>
-    <img src="./screenshots/lx.png" alt="lx command" width="48%" />
+    <img src="./screenshots/lx.png" alt="lx command" width="78%" />
   </p>
 
   <p>
-    <img src="./screenshots/lx-tree-ra.png" alt="lx recursive with inline tree" width="48%" />
+    <img src="./screenshots/lx-tree-ra.png" alt="lx recursive with inline tree" width="78%" />
   </p>
 </div>
 
