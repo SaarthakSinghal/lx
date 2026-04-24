@@ -30,8 +30,20 @@
 - [Hyperlinks](#hyperlinks)
 - [Behavior Notes](#behavior-notes)
 - [Troubleshooting](#troubleshooting)
+- [References](#references)
 
 ## Quick Start
+
+Install from GitHub with one command:
+
+```powershell
+irm https://raw.githubusercontent.com/saarthaksinghal/lx/main/install.ps1 | iex
+```
+
+That installer:
+
+- downloads `lx.ps1` into your current folder
+- attempts to load `lx` in the current session
 
 If you are already in this folder:
 
@@ -42,13 +54,12 @@ lx -r
 lx -rs --tree
 ```
 
-If you want `lx` available in every PowerShell session, add `lx.ps1` to your profile:
-
-```powershell
-. "$HOME\Documents\PowerShell\Scripts\lx.ps1"
-```
-
-You can load [`lx.ps1`](./lx.ps1) from any permanent location you prefer.
+> [!INFO]
+> If you want `lx` available in every PowerShell session, add this line to `$PROFILE`:
+>
+> ```powershell
+> . 'C:\path\to\lx.ps1'
+> ```
 
 ## Requirements
 
@@ -59,24 +70,22 @@ You can load [`lx.ps1`](./lx.ps1) from any permanent location you prefer.
 ### Strongly Recommended
 
 - [`Terminal-Icons`](https://github.com/devblackops/Terminal-Icons) for colored file and folder icons
+- A [`Nerd Font`](https://www.nerdfonts.com/) in your terminal so icons render correctly instead of showing missing glyph boxes
 - A terminal with ANSI / VT support such as Windows Terminal for cleaner colors and hyperlink support
 
 ### Useful To Know
 
 - `lx` still works without `Terminal-Icons`; it just falls back to plain names or built-in icon replacements
+- `lx` still runs without a Nerd Font, but icon glyphs may look broken or incomplete
 - recursive size caching is stored beside the script as `.lx-size-cache.json`
 
 ## Install
 
+### Manual Install
+
 ### Option 1: Load In The Current Session
 
-If you are in the same directory as `lx.ps1`:
-
-```powershell
-. .\lx.ps1
-```
-
-If the script is somewhere else:
+Dot-source the script from its full path:
 
 ```powershell
 . 'C:\path\to\lx.ps1'
@@ -88,24 +97,23 @@ Then run:
 lx
 ```
 
-### Option 2: Load From `$PROFILE`
+### Option 2: Add It To `$PROFILE`
 
-1. Copy `lx.ps1` to a permanent folder.
+1. Put `lx.ps1` in a permanent folder.
 2. Open your PowerShell profile.
-3. Dot-source the script from that file.
+3. Add a dot-source line that points to that file.
 4. Reload the profile.
 
 Example:
 
 ```powershell
-Copy-Item .\lx.ps1 "$HOME\Documents\PowerShell\Scripts\lx.ps1"
 notepad $PROFILE
 ```
 
 Add this line to `$PROFILE`:
 
 ```powershell
-. "$HOME\Documents\PowerShell\Scripts\lx.ps1"
+. 'C:\path\to\lx.ps1'
 ```
 
 Reload and test:
@@ -297,7 +305,7 @@ Unblock the file once:
 Unblock-File .\lx.ps1
 ```
 
-### `lx` Not Found
+### `lx` Is Not Found
 
 Make sure you dot-sourced the script:
 
@@ -321,3 +329,10 @@ Clear the cache and rerun:
 lx --clear-cache
 lx -r
 ```
+
+## References
+
+- [`Terminal-Icons`](https://github.com/devblackops/Terminal-Icons) for colored file and folder icons in the main `Name` column
+- [`MartianMono Nerd Font`](https://www.nerdfonts.com/font-downloads#:~:text=Version%3A%201%2E1%2E0) used for proper rendering of the icon glyphs
+- [`Firewatch`](https://windowsterminalthemes.dev/?theme=Firewatch) windows terminal theme used to improve UI
+- Unicode box-drawing characters for inline tree preview rendering

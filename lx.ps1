@@ -1021,6 +1021,10 @@ function Get-LxRenderedName {
             return "  $($Item.Name)"
         }
 
+        if ($Item.Extension -in @('.ps1')) {
+            return " $($Item.Name)"
+        }
+
         return $Item.Name
     }
 
@@ -1040,6 +1044,10 @@ function Get-LxRenderedName {
 
     if ($Item.Extension -in @('.md', '.markdown')) {
         return (Replace-LxIconPreserveStyle -RenderedName $renderedName -NewIcon "" -FallbackName $Item.Name)
+    }
+
+    if ($Item.Extension -in @('.ps1')) {
+        return (Replace-LxIconPreserveStyle -RenderedName $renderedName -NewIcon "" -FallbackName $Item.Name)
     }
 
     return $renderedName
