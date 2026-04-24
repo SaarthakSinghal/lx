@@ -1116,7 +1116,7 @@ function Get-LxRenderedName {
         if ($Item.PSIsContainer) {
             switch -Regex ($Item.Name) {
                 '^Downloads$' { return "󰉍  $($Item.Name)" }
-                '^Videos$'    { return "󛿺  $($Item.Name)" }
+                '^Videos$'    { return "󱧺  $($Item.Name)" }
                 '^Desktop$'   { return "  $($Item.Name)" }
                 '^Contacts$'  { return "󰛋  $($Item.Name)" }
                 '^Pictures$'  { return "󰉏  $($Item.Name)" }
@@ -1127,6 +1127,10 @@ function Get-LxRenderedName {
 
         if ($Item.Extension -in @('.md', '.markdown')) {
             return "  $($Item.Name)"
+        }
+
+        if ($Item.Extension -in @('.ps1')) {
+            return " $($Item.Name)"
         }
 
         return $Item.Name
@@ -1148,6 +1152,10 @@ function Get-LxRenderedName {
 
     if ($Item.Extension -in @('.md', '.markdown')) {
         return (Replace-LxIconPreserveStyle -RenderedName $renderedName -NewIcon "" -FallbackName $Item.Name)
+    }
+
+    if ($Item.Extension -in @('.ps1')) {
+        return (Replace-LxIconPreserveStyle -RenderedName $renderedName -NewIcon "" -FallbackName $Item.Name)
     }
 
     return $renderedName
