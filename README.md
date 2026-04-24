@@ -336,3 +336,4 @@ lx -r
 - [`MartianMono Nerd Font`](https://www.nerdfonts.com/font-downloads#:~:text=Version%3A%201%2E1%2E0) used for proper rendering of the icon glyphs
 - [`Firewatch`](https://windowsterminalthemes.dev/?theme=Firewatch) windows terminal theme used to improve UI
 - Unicode box-drawing characters for inline tree preview rendering
+  
