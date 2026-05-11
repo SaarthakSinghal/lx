@@ -54,7 +54,7 @@ lx -r
 lx -rs --tree
 ```
 
-> [!INFO]
+> [!NOTE]
 > If you want `lx` available in every PowerShell session, add this line to `$PROFILE`:
 >
 > ```powershell
