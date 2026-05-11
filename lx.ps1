@@ -36,6 +36,8 @@ function Resolve-LxOptions {
     $sortMode = $null
     $treeEnabled = $false
     $treeMode = $null
+    $wrapTextEnabled = $false
+    $wrapTextMode = $null
     $linksEnabled = $false
     $linksMode = $null
     $clearCache = $false
@@ -59,6 +61,9 @@ function Resolve-LxOptions {
         elseif ($arg -is [string] -and $arg -eq '--tree') {
             $treeMode = $true
         }
+        elseif ($arg -is [string] -and ($arg -eq '--wrap' -or $arg -eq '--wrap-text')) {
+            $wrapTextMode = $true
+        }
         elseif ($arg -is [string] -and $arg -eq '--links') {
             $linksMode = $true
         }
@@ -79,6 +84,23 @@ function Resolve-LxOptions {
                 'false' { $treeMode = $false }
                 default {
                     Write-Error "Invalid value for --tree. Use --tree, --tree=true, or --tree=false."
+                    return $null
+                }
+            }
+        }
+        elseif ($arg -is [string] -and ($arg -like '--wrap=*' -or $arg -like '--wrap-text=*')) {
+            $value = if ($arg -like '--wrap-text=*') {
+                $arg.Substring(12).ToLowerInvariant()
+            }
+            else {
+                $arg.Substring(7).ToLowerInvariant()
+            }
+
+            switch ($value) {
+                'true'  { $wrapTextMode = $true }
+                'false' { $wrapTextMode = $false }
+                default {
+                    Write-Error "Invalid value for --wrap/--wrap-text. Use --wrap, --wrap=true, --wrap=false, --wrap-text, --wrap-text=true, or --wrap-text=false."
                     return $null
                 }
             }
@@ -117,6 +139,10 @@ function Resolve-LxOptions {
         $treeEnabled = $treeMode
     }
 
+    if ($null -ne $wrapTextMode) {
+        $wrapTextEnabled = $wrapTextMode
+    }
+
     if ($null -ne $linksMode) {
         $linksEnabled = $linksMode
     }
@@ -127,6 +153,7 @@ function Resolve-LxOptions {
         SortBySize    = $sortBySize
         SortAscending = $sortAscending
         TreeEnabled   = $treeEnabled
+        WrapTextEnabled = $wrapTextEnabled
         LinksEnabled  = $linksEnabled
         ClearCache    = $clearCache
         ShowCacheInfo = $showCacheInfo
@@ -212,6 +239,7 @@ function Write-LxHelp {
     Write-LxHelpOptionRow -Flag '--sort=desc' -Description 'Sort top-level rows by size descending.'
     Write-LxHelpOptionRow -Flag '--tree' -Description 'Show one-level inline tree previews for top-level directories.'
     Write-LxHelpOptionRow -Flag '--tree=false' -Description 'Disable tree previews explicitly.'
+    Write-LxHelpOptionRow -Flag '--wrap, --wrap-text' -Description 'Clamp header and name text to the viewport with the tree-style ...(+N more) suffix.'
     Write-LxHelpOptionRow -Flag '--links' -Description 'Make displayed directories clickable when the terminal supports hyperlinks.'
     Write-LxHelpOptionRow -Flag '--links=false' -Description 'Disable clickable hyperlinks explicitly.'
     Write-LxHelpOptionRow -Flag '--clear-cache' -Description 'Delete the persistent recursive-size cache file.'
@@ -222,6 +250,7 @@ function Write-LxHelp {
     Write-LxHelpExampleRow -Command 'lx' -Description 'List the current directory.'
     Write-LxHelpExampleRow -Command 'lx -r' -Description 'Show recursive directory sizes plus the current folder total.'
     Write-LxHelpExampleRow -Command 'lx -rs --tree' -Description 'Sort by recursive size and show one-level previews.'
+    Write-LxHelpExampleRow -Command 'lx --wrap C:\Projects' -Description 'Clamp long header and name text to the terminal width.'
     Write-LxHelpExampleRow -Command 'lx -ra C:\Users\saart\Projects' -Description 'Include hidden entries for a specific directory.'
     Write-LxHelpExampleRow -Command 'lx --links .' -Description 'Enable clickable directory links for the current path.'
     Write-LxHelpExampleRow -Command 'lx --cache-size' -Description 'Inspect the recursive-size cache.'
@@ -759,6 +788,29 @@ function Get-LxDirectorySizeCaches {
     }
 }
 
+function Invoke-LxDirectorySizeScanBatch {
+    [CmdletBinding()]
+    param(
+        [AllowEmptyCollection()]
+        [string[]]$Paths,
+
+        [int]$MaxDegreeOfParallelism = $script:LxDirectorySizeScannerMaxDegreeOfParallelism
+    )
+
+    $scanPaths = @($Paths | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($scanPaths.Count -eq 0) {
+        return @()
+    }
+
+    Initialize-LxDirectorySizeScanner
+
+    $cacheFilePath = Get-LxPersistentSizeCachePath
+    @([Lx.DirectorySizeScanner]::MeasureDirectories(
+            [string[]]$scanPaths,
+            $cacheFilePath,
+            $MaxDegreeOfParallelism))
+}
+
 function Get-LxValidatedCachedDirectorySize {
     [CmdletBinding()]
     param(
@@ -808,29 +860,6 @@ function Get-LxValidatedCachedDirectorySize {
         Size   = $cachedSize
         Source = 'persistent'
     }
-}
-
-function Invoke-LxDirectorySizeScanBatch {
-    [CmdletBinding()]
-    param(
-        [AllowEmptyCollection()]
-        [string[]]$Paths,
-
-        [int]$MaxDegreeOfParallelism = $script:LxDirectorySizeScannerMaxDegreeOfParallelism
-    )
-
-    $scanPaths = @($Paths | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-    if ($scanPaths.Count -eq 0) {
-        return @()
-    }
-
-    Initialize-LxDirectorySizeScanner
-
-    $cacheFilePath = Get-LxPersistentSizeCachePath
-    @([Lx.DirectorySizeScanner]::MeasureDirectories(
-            [string[]]$scanPaths,
-            $cacheFilePath,
-            $MaxDegreeOfParallelism))
 }
 
 function Get-LxDirectorySizePlan {
@@ -1625,7 +1654,33 @@ function Get-LxViewportWidth {
     4096
 }
 
-function Format-LxTreePreviewText {
+function Split-LxAnsiWrappedText {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Text
+    )
+
+    $escape = [char]27
+    $escapedEscape = [regex]::Escape([string]$escape)
+    $pattern = "^(?<prefix>(?:${escapedEscape}\[[0-9;]*m)*)(?<content>.*?)(?<suffix>(?:${escapedEscape}\[[0-9;]*m)*)$"
+
+    if ($Text -match $pattern) {
+        return [PSCustomObject]@{
+            Prefix  = [string]$matches.prefix
+            Content = [string]$matches.content
+            Suffix  = [string]$matches.suffix
+        }
+    }
+
+    [PSCustomObject]@{
+        Prefix  = ''
+        Content = $Text
+        Suffix  = ''
+    }
+}
+
+function Format-LxViewportPlainText {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -1661,6 +1716,33 @@ function Format-LxTreePreviewText {
 
     $fallbackVisibleChars = [Math]::Max(0, $AvailableWidth - 3)
     $Text.Substring(0, $fallbackVisibleChars) + '...'
+}
+
+function Format-LxViewportText {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Text,
+
+        [int]$AvailableWidth
+    )
+
+    $textParts = Split-LxAnsiWrappedText -Text $Text
+    $formattedContent = Format-LxViewportPlainText -Text $textParts.Content -AvailableWidth $AvailableWidth
+
+    "{0}{1}{2}" -f $textParts.Prefix, $formattedContent, $textParts.Suffix
+}
+
+function Format-LxTreePreviewText {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Text,
+
+        [int]$AvailableWidth
+    )
+
+    Format-LxViewportText -Text $Text -AvailableWidth $AvailableWidth
 }
 
 function Write-LxContinuationLines {
@@ -1734,7 +1816,10 @@ function Write-LxRowBlock {
         [object]$Row,
 
         [Parameter(Mandatory)]
-        [object]$ColumnWidths
+        [object]$ColumnWidths,
+
+        [Parameter(Mandatory)]
+        [object]$Options
     )
 
     $sizeShiftLeft = 2
@@ -1758,6 +1843,22 @@ function Write-LxRowBlock {
         $Row.SizeText.PadLeft($ColumnWidths.SizeWidth)
     }
 
+    $nameText = [string]$Row.RenderedName
+    if ($Options.WrapTextEnabled) {
+        $prefixLength = if ($rowPrefix) {
+            $rowPrefix.Length
+        }
+        else {
+            $ColumnWidths.ModeWidth +
+            $ColumnWidths.GapAfterMode +
+            $ColumnWidths.LastWriteTimeWidth +
+            $ColumnWidths.GapAfterTime
+        }
+
+        $availableTextWidth = [Math]::Max(0, (Get-LxViewportWidth) - $prefixLength - $sizeSegment.Length - $gapAfterSize.Length)
+        $nameText = Format-LxViewportText -Text $nameText -AvailableWidth $availableTextWidth
+    }
+
     if ($rowPrefix) {
         Write-Host -NoNewline $rowPrefix -ForegroundColor Gray
     }
@@ -1769,7 +1870,7 @@ function Write-LxRowBlock {
     }
     Write-Host -NoNewline $sizeSegment -ForegroundColor Gray
     Write-Host -NoNewline $gapAfterSize
-    Write-Host (Format-LxHyperlinkText -Text $Row.RenderedName -Uri $Row.HyperlinkUri)
+    Write-Host (Format-LxHyperlinkText -Text $nameText -Uri $Row.HyperlinkUri)
 
     if (-not $Row.PSObject.Properties.Match('ContinuationLines')) {
         return
@@ -1832,10 +1933,20 @@ function Write-LxPathGroupMetaLine {
 
         [ConsoleColor]$ValueColor = [ConsoleColor]::White,
 
-        [string]$ValueUri
+        [string]$ValueUri,
+
+        [switch]$WrapText
     )
 
-    $formattedValue = Format-LxHyperlinkText -Text $Value -Uri $ValueUri
+    $displayValue = if ($WrapText) {
+        $availableTextWidth = [Math]::Max(0, (Get-LxViewportWidth) - $Indent.Length - $LabelWidth - 2)
+        Format-LxViewportText -Text $Value -AvailableWidth $availableTextWidth
+    }
+    else {
+        $Value
+    }
+
+    $formattedValue = Format-LxHyperlinkText -Text $displayValue -Uri $ValueUri
 
     Write-Host -NoNewline $Indent -ForegroundColor Gray
     Write-Host -NoNewline ($Label.PadRight($LabelWidth)) -ForegroundColor $LabelColor
@@ -1883,17 +1994,17 @@ function Write-LxPathGroup {
         Write-Host ''
     }
 
-    Write-LxPathGroupMetaLine -Label 'Directory' -Value $PathGroup.DisplayPath -ValueColor White -ValueUri $pathGroupHyperlinkUri
+    Write-LxPathGroupMetaLine -Label 'Directory' -Value $PathGroup.DisplayPath -ValueColor White -ValueUri $pathGroupHyperlinkUri -WrapText:$Options.WrapTextEnabled
 
     if ($null -ne $pathGroupTotal) {
-        Write-LxPathGroupMetaLine -Label 'Total' -Value $pathGroupTotal.SizeText -ValueColor Green
+        Write-LxPathGroupMetaLine -Label 'Total' -Value $pathGroupTotal.SizeText -ValueColor Green -WrapText:$Options.WrapTextEnabled
     }
 
     Write-Host ''
     Write-LxHeader -ColumnWidths $columnWidths
 
     foreach ($row in $rows) {
-        Write-LxRowBlock -Row $row -ColumnWidths $columnWidths
+        Write-LxRowBlock -Row $row -ColumnWidths $columnWidths -Options $Options
     }
 }
 

@@ -54,7 +54,7 @@ lx -r
 lx -rs --tree
 ```
 
-> [!NOTE]
+> [!INFO]
 > If you want `lx` available in every PowerShell session, add this line to `$PROFILE`:
 >
 > ```powershell
@@ -142,6 +142,14 @@ lx --links
 lx --tree --links
 ```
 
+### Clamp Long Text To The Viewport
+
+```powershell
+lx --wrap
+lx --wrap-text C:\Projects
+lx -r --wrap
+```
+
 ## Flags Reference
 
 <table>
@@ -162,6 +170,7 @@ lx --tree --links
     <tr><td><code>--sort=desc</code></td><td>Sort top-level rows by size descending.</td></tr>
     <tr><td><code>--tree</code></td><td>Show one-level inline tree previews for top-level directories.</td></tr>
     <tr><td><code>--tree=false</code></td><td>Disable tree previews explicitly.</td></tr>
+    <tr><td><code>--wrap</code>, <code>--wrap-text</code></td><td>Clamp long header and name text to the terminal width with the same <code>...(+N more)</code> suffix style used by tree previews.</td></tr>
     <tr><td><code>--links</code></td><td>Make top-level directories and tree-preview directories clickable when the terminal supports hyperlinks.</td></tr>
     <tr><td><code>--links=false</code></td><td>Disable clickable links explicitly.</td></tr>
     <tr><td><code>--clear-cache</code></td><td>Delete the persistent recursive-size cache file.</td></tr>
